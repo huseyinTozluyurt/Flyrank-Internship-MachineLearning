@@ -343,3 +343,8 @@ df_split_diagnostics = pd.read_csv(
 
 ------------------------------------------------------------------------
 
+## Conclusion
+
+The FlyRank Content Refresh Recommendation Engine brings together data validation, transparent recommendation rules, LambdaRank model evaluation, business-impact tracking, and exploratory data analysis in a structured workflow. The evaluation results indicate that LambdaRank is a promising candidate compared with the implemented baselines, while the EDA provides further insights into ranking performance, feature importance, client-level variation, and recommendation quality.
+
+The next priorities are to validate full-population production scoring, ensure consistency across exported artifacts, and collect real content-refresh intervention data to evaluate business outcomes. This will help evolve the project from a historical performance-based ranking system into a more reliable, evidence-driven tool for content optimization.
