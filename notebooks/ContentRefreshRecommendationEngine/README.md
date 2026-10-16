@@ -348,5 +348,3 @@ columns and update the mapping rather than assuming the analysis ran.
 
 ------------------------------------------------------------------------
 
-*Project documentation should be updated whenever the notebook logic,
-exported schemas, model features, or production workflow changes.*
