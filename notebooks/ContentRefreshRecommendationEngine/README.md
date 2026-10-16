@@ -341,10 +341,5 @@ df_split_diagnostics = pd.read_csv(
 )
 ```
 
-The notebook checks for recognized column names in several analyses. If
-a section reports that a field is unavailable, inspect the CSV's actual
-columns and update the mapping rather than assuming the analysis ran.
-
-
 ------------------------------------------------------------------------
 
