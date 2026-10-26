@@ -52,7 +52,7 @@
 <p class="meta">A client-held-out comparison of a rule baseline and two lightweight models on 30,000 anonymized pages · Hüseyin Tozluyurt · FlyRank ML Internship capstone · October 2026</p>
 
 <nav class="toc">
-  <a href="#abstract">Abstract</a><a href="#problem">Problem</a><a href="#data">Data</a><a href="#method">Method</a><a href="#results">Results</a><a href="#limits">Limitations</a><a href="#recs">Recommendations</a><a href="#repro">Reproducibility</a><a href="#credit">Credit</a>
+  <a href="#abstract">Abstract</a><a href="#problem">Problem</a><a href="#data">Data</a><a href="#method">Method</a><a href="#results">Results</a><a href="#limits">Limitations</a><a href="#recs">Recommendations</a><a href="#repro">Reproducibility</a><a href="#credit">Credit</a><a href="projects.html">Full project portfolio</a>
 </nav>
 
 <h2 id="abstract">Abstract</h2>
@@ -157,6 +157,8 @@ The output is a review queue with plain reason codes for human editors: explorat
 <h2 id="repro">7. Reproducibility</h2>
 <p>Everything on this page comes from one notebook run, <a href="https://github.com/huseyinTozluyurt/Flyrank-Internship-MachineLearning/blob/main/work/notebooks/capstone.ipynb">work/notebooks/capstone.ipynb</a>. It writes the metrics receipt <a href="https://github.com/huseyinTozluyurt/Flyrank-Internship-MachineLearning/blob/main/work/outputs/capstone_metrics.json">work/outputs/capstone_metrics.json</a>. The full write-up is <a href="https://github.com/huseyinTozluyurt/Flyrank-Internship-MachineLearning/blob/main/work/capstone_report.md">work/capstone_report.md</a>.</p>
 <p>Rerun from a fresh clone with <code>pip install -r requirements.txt jupyter</code>, then <code>jupyter nbconvert --to notebook --execute work/notebooks/capstone.ipynb</code>, or use the notebook's Colab badge. Seeds: grouped splits 42–61 (42–46 reproduce Milestone 4); review queue built with 5 grouped splits at seed 42. Recorded with scikit-learn 1.9.1, pandas 3.0.5 and numpy 2.5.3.</p>
+
+<p>The capstone is one part of the internship. The EDA, missing-data study, heuristic baseline, classifiers, regression, SHAP, segmentation, PCA, anomaly detection and the Content Refresh Recommendation Engine are written up with their figures on the <a href="projects.html">full project portfolio</a> page.</p>
 
 <h2 id="credit">8. Acknowledgments &amp; data credit</h2>
 <p>Built on the FlyRank ML Internship dataset, the anonymized content-refresh starter slice provided by <a href="https://flyrank.ai">FlyRank</a>. Thanks to the FlyRank mentors for the data, the problem framing and the internship materials this work builds on.</p>
