@@ -82,7 +82,8 @@ That runs the whole pipeline on the bundled sample and writes results to `output
 | `data/raw/content_refresh_anonymized.csv` | The anonymized starter dataset (~30k pages). |
 | `outputs/` | Example outputs so you can see the **target shape** (`model_report.md`, `refresh_queue_sample.csv`, `charts/`). |
 | `work/` | **Your space.** Lane experiments and your capstone live here — see `work/README.md`. |
-| `docs/` | The core docs + the data dictionary (see below). |
+| `docs/` | The core docs + the data dictionary (see below), plus the built portfolio site served by GitHub Pages. |
+| `site/` | Source of the portfolio site (React + Vite + React Router). See `site/README.md`. |
 
 ### Read these (in `docs/`)
 
