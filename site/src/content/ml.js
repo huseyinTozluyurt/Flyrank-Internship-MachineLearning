@@ -1,0 +1,520 @@
+// Machine-learning modules, including the staged Content Refresh
+// Recommendation Engine. Numbers come from each notebook's saved outputs.
+
+const CSV = 'Starter CSV · 30,000 pages · 32 clients'
+const WAREHOUSE = 'Warehouse · 78.8M daily rows via DuckDB'
+const REC = 'notebooks/ContentRefreshRecommendationEngine'
+const ENGINE = 'Content Refresh Recommendation Engine'
+
+const ndcgTable = {
+  caption: 'Held-out clients, 5 repeated client splits (25 train / 7 test clients each)',
+  head: ['Method', 'Mean NDCG@5', 'Mean NDCG@10', 'Median NDCG@10'],
+  rows: [
+    ['Rule-based baseline', '0.216', '0.246', '0.239'],
+    ['Impressions-only baseline', '0.247', '0.263', '0.171'],
+    ['LambdaRank', '0.346', '0.381', '0.315'],
+  ],
+}
+
+export const ml = [
+  {
+    slug: 'readable-model',
+    title: 'Your first readable model',
+    short: 'A hand-written rule, a depth-2 decision tree you can read, and a leakage demo.',
+    notebooks: ['notebooks/02_your_first_readable_model.ipynb'],
+    data: CSV,
+    methods: ['hand-written rule', 'decision tree', 'Precision@K'],
+    question: 'Can a model be a rule you can read, and what happens if the outcome leaks into the features?',
+    summary:
+      'Week 2. A "stale × visible" rule and a shallow decision tree are scored with Precision@K, then the label-defining field `trend_pct` is deliberately fed in to show what leakage looks like.',
+    stats: [
+      { value: '0.90 / 0.68', label: 'rule P@20 / P@50 (in-sample)' },
+      { value: '1.000', label: 'leaky tree P@50' },
+    ],
+    pipeline: [
+      { title: 'Write a rule by hand', text: 'Pages stale for more than 180 days, ranked by 90-day impressions.' },
+      { title: 'Score it with Precision@K', text: 'Of the top K pages, the share actually labeled down.' },
+      { title: 'Let a depth-2 tree learn a rule', text: 'Give it pre-decision signals only and print the tree: impressions above 5.5, then content age 312 days or less → decline.' },
+      { title: 'Compare', text: 'Tree P@20 0.55 and P@50 0.60, against 0.90 and 0.68 for the hand rule. A depth-2 tree has only four distinct scores, so its top 50 is one big tie.' },
+      { title: 'Leakage demo', text: 'Add `trend_pct`: the tree splits at −20% and scores P@50 = 1.000, because the label is computed from that field.' },
+      { title: 'Experiments', text: 'Depth 3 (P@50 0.72), depth 4 (0.68), and swapping impressions for engagement rate (0.70).' },
+    ],
+    findings: [
+      'A shallow tree is a readable if/else rule: it splits on impressions first, then on content age.',
+      'A perfect score is a warning sign, not a result: `trend_pct` was banned as a feature from then on.',
+      'In the experiment cells the hand-rule figure printed as 1.000, which appears to reuse a value from the leakage demo; the earlier in-sample rule figure is 0.68.',
+    ],
+    trust: 'All scores here are in-sample, for teaching. Later notebooks evaluate on held-out clients.',
+    related: ['heuristic-baseline', 'ml-05-leakage-check'],
+  },
+  {
+    slug: 'heuristic-baseline',
+    title: 'Heuristic baseline vs random forest',
+    short: 'Does a model beat "stale for 180+ days, ordered by impressions" on unseen clients?',
+    notebooks: ['notebooks/HeuristicBaseline.ipynb', 'work/notebooks/HeuristicBaseline.ipynb'],
+    data: CSV,
+    methods: ['rule baseline', 'random forest', 'GroupShuffleSplit', 'Precision@50'],
+    question: 'Does a learned model beat the obvious rule when clients are held out?',
+    summary:
+      'Builds the stale-and-traffic rule as an honest baseline, then trains a random forest on a client-grouped split and compares them on the same held-out pages, with confusion matrices, ROC and feature importance.',
+    stats: [
+      { value: '0.64 vs 0.68', label: 'P@50, rule vs forest' },
+      { value: '0.598', label: 'forest ROC-AUC' },
+      { value: '8', label: 'unseen test clients' },
+    ],
+    pipeline: [
+      { title: 'Prepare the data', text: 'Load the CSV, mean-impute word and character counts, and define `is_declining_label` (base rate 0.542).' },
+      { title: 'Engineer features', text: 'Days since update, content age, impressions, position, CTR, word and character counts, and `staleness × position`.' },
+      { title: 'Split by client', text: '`GroupShuffleSplit` on `client_id`: 22,885 pages from 24 clients to train, 7,115 pages from 8 unseen clients to test.' },
+      { title: 'Score the rule', text: '`(days_since_last_update > 180) × impressions_90d`, evaluated on the test clients: Precision@50 0.640.' },
+      { title: 'Train the random forest', text: 'Same split and features; Precision@50 0.680.' },
+      { title: 'Evaluate', text: 'Confusion matrix, precision/recall/F1, ROC curve and a side-by-side metric chart.' },
+      { title: 'Interpret', text: 'Feature importances and their business meaning.' },
+    ],
+    figures: [
+      { file: 'rule-vs-forest.png', caption: 'On held-out clients the forest edges the rule at Precision@50. The rule\'s recall is near zero because it only flags stale pages.' },
+      { file: 'confusion-matrix.png', caption: 'Forest confusion matrix on the test clients (threshold 0.5).' },
+      { file: 'roc.png', caption: 'Forest ROC curve: AUC 0.60.' },
+      { file: 'importance.png', caption: 'Importance: impressions 0.29, content age 0.24, position 0.22.' },
+    ],
+    findings: [
+      'Forest Precision@50 0.68 against 0.64 for the rule on 8 unseen clients.',
+      'At a 0.5 threshold the forest has precision 0.579, recall 0.637 and F1 0.607. The rule has precision 0.638 but recall 0.008.',
+      'Run in-sample on all clients, the rule reaches Precision@50 0.68, so a single grouped split moves the comparison noticeably.',
+    ],
+    trust:
+      'One grouped split with 8 test clients. The capstone repeats the comparison over 20 splits (rule 0.66, forest 0.75, logistic 0.77) and is the better estimate.',
+    related: ['ml-07-baseline-score', 'ml-08-capstone-modeling', 'capstone'],
+  },
+  {
+    slug: 'content-status',
+    title: 'Content status prediction (down / stable / up)',
+    short: 'Five classifiers on a three-class trend target.',
+    notebooks: ['notebooks/ContentStatusPrediction.ipynb', 'work/notebooks/ContentStatusPrediction.ipynb'],
+    data: CSV,
+    methods: ['logistic regression', 'random forest', 'XGBoost', 'LightGBM', 'CatBoost'],
+    question: 'Can a model tell declining, stable and growing pages apart?',
+    summary:
+      'A multi-class version of the problem. Five models are trained with class weighting and compared on accuracy, balanced accuracy and macro F1; LightGBM is chosen as best.',
+    stats: [
+      { value: '27,764', label: 'pages (flat → stable, new excluded)' },
+      { value: '≈0.55', label: 'LightGBM balanced accuracy' },
+      { value: '704 / 1,423', label: 'stable pages predicted correctly' },
+    ],
+    pipeline: [
+      { title: 'Audit missing values', text: 'Same missingness profile as the EDA (provider 71.5%, word count 25.7%, keyword fields 8.2%).' },
+      { title: 'Define the target', text: '`trend_direction` with `flat` merged into `stable` and `new` excluded: 16,262 down, 7,114 stable, 4,388 up.' },
+      { title: 'Select features', text: 'Keyword and content fields, previous-30-day impressions, clicks and sessions, content age and days since update.' },
+      { title: 'Preprocess inside pipelines', text: 'Median and most-frequent imputation, scaling for linear models, one-hot encoding, class weights.' },
+      { title: 'Train five models', text: 'Logistic regression, random forest, XGBoost, LightGBM and CatBoost on a stratified 80/20 split.' },
+      { title: 'Compare and inspect', text: 'Bar chart of the three metrics and a confusion matrix for the chosen model.' },
+    ],
+    figures: [
+      { file: 'model-comparison.png', caption: 'All five models land between about 0.43 and 0.61; three-way status is hard to separate.' },
+      { file: 'confusion-lightgbm.png', caption: 'LightGBM confusion matrix: stable and up pages are often predicted as down.' },
+    ],
+    findings: [
+      'LightGBM was picked for the best balance: about 0.58 accuracy, 0.55 balanced accuracy and 0.53 macro F1. Random forest had the highest raw accuracy (about 0.61) but lower balanced accuracy.',
+      'Stable is the hardest class: 704 of 1,423 correct. Up pages are correct 460 of 878 times.',
+    ],
+    trust:
+      'The comparison uses a random stratified split, includes `client_id` as a feature and uses previous-30-day traffic, which is part of the label arithmetic. All three inflate the scores, so treat them as an upper bound.',
+    related: ['needs-refresh', 'shap'],
+  },
+  {
+    slug: 'needs-refresh',
+    title: 'Binary classification: needs refresh',
+    short: 'Impressions down more than 30% as a business target, with a threshold study.',
+    notebooks: ['notebooks/Binary_Classification_Needs_Refresh.ipynb'],
+    data: CSV,
+    methods: ['logistic regression', 'random forest', 'XGBoost', 'threshold analysis'],
+    question: 'Which pages likely need a refresh, if "needs refresh" means impressions fell more than 30%?',
+    summary:
+      'Turns the trend into a business target (`trend_pct < −30%`), treats the threshold as a hypothesis to test, compares three classifiers, and studies how the decision cutoff trades precision for recall.',
+    stats: [
+      { value: '47.0%', label: 'pages needing refresh at −30%' },
+      { value: '0.81 / 0.78', label: 'XGBoost ROC-AUC / PR-AUC' },
+      { value: '0.74', label: 'best F1 (cutoff 0.40)' },
+    ],
+    pipeline: [
+      { title: 'Define the target', text: '`needs_refresh = 1` when `trend_pct < −30%`: 14,106 of 30,000 pages.' },
+      { title: 'Threshold sensitivity', text: 'Share of pages flagged at −10% to −60%: from 60.8% down to 23.9%.' },
+      { title: 'Design predictors', text: '14 features (content, search, previous-30-day traffic, ranking); `trend_pct`, `trend_direction` and the label are excluded.' },
+      { title: 'Split and preprocess', text: 'Stratified 80/20 split; median imputation and one-hot encoding inside the pipeline; `scale_pos_weight` 1.13 for XGBoost.' },
+      { title: 'Compare classifiers', text: 'Logistic regression, random forest and XGBoost on ROC-AUC, PR-AUC, precision, recall and F1.' },
+      { title: 'Pick a model and tune the cutoff', text: 'XGBoost by PR-AUC, then a precision/recall/F1 sweep over cutoffs from 0.10 to 0.90.' },
+      { title: 'Rank and save', text: 'An article-level risk table sorted by probability, feature importance, and a saved pipeline for future records.' },
+    ],
+    figures: [
+      { file: 'pr-curves.png', caption: 'Precision–recall curves: tree models clearly beat logistic regression on this target and split.' },
+      { file: 'roc.png', caption: 'ROC curves: XGBoost 0.81, random forest 0.80, logistic regression 0.64.' },
+      { file: 'confusion-xgboost.png', caption: 'XGBoost at the default 0.5 cutoff: precision 0.68, recall 0.78 for the refresh class.' },
+      { file: 'threshold.png', caption: 'Cutoff choice is an operational decision: lower catches more, higher wastes fewer reviews.' },
+      { file: 'importance.png', caption: 'The top feature is previous-30-day impressions, which is part of the label\'s own arithmetic.' },
+    ],
+    table: {
+      caption: 'Test-set results (stratified 80/20 split)',
+      head: ['Model', 'ROC-AUC', 'PR-AUC', 'Precision', 'Recall', 'F1'],
+      rows: [
+        ['XGBoost', '0.812', '0.777', '0.683', '0.784', '0.730'],
+        ['Random forest', '0.802', '0.760', '0.683', '0.763', '0.720'],
+        ['Logistic regression', '0.637', '0.576', '0.568', '0.681', '0.619'],
+      ],
+    },
+    findings: [
+      'A 0.40 cutoff gives the best F1 (0.74) with precision 0.64 and recall 0.88; 0.50 gives precision 0.68 and recall 0.78.',
+      'The notebook is explicit that a probability of 0.94 means a strong ranking, not a 94% chance that a refresh will help.',
+    ],
+    trust:
+      'The model uses previous-30-day impressions, clicks and sessions. Previous impressions are the denominator of `trend_pct`, so the model partly learns the label\'s arithmetic. With a random page split, 0.81 AUC is an upper bound. The capstone, without those fields and with clients held out, measures 0.61–0.64.',
+    related: ['shap', 'content-status', 'capstone'],
+  },
+  {
+    slug: 'regression',
+    title: 'Regression: predicting next-30-day impressions',
+    short: 'XGBoost on the CSV, then frozen and tested on 111,247 warehouse pages.',
+    notebooks: ['notebooks/Predict_30d_Impressions_with_Regression.ipynb', 'work/notebooks/Predict_30d_Impressions_with_Regression.ipynb'],
+    data: 'Starter CSV → Warehouse',
+    methods: ['XGBoost regressor', 'RandomizedSearchCV', 'log target', 'naive persistence baseline'],
+    question: 'Can last-30-day impressions be predicted from the previous 30 days plus content attributes?',
+    summary:
+      'A regression lane that ends in an honest negative result. A model that looks strong on the CSV is tested on the warehouse against a naive "same as last month" baseline, and loses on R².',
+    stats: [
+      { value: '0.74', label: 'test R² on the CSV' },
+      { value: '0.40 vs 0.63', label: 'warehouse R², model vs naive' },
+      { value: '1,074 → 689', label: 'MAE, naive vs enriched model' },
+    ],
+    pipeline: [
+      { title: 'Frame the question', text: 'Target `impressions_last_30d`; 14 features from the previous 30 days and content attributes.' },
+      { title: 'Split before imputing', text: '80/20 split (24,000 / 6,000) so imputation is fitted inside the pipeline on training rows only.' },
+      { title: 'Train XGBoost', text: 'Test R² 0.737, MAE 567, RMSE 2,900. Train R² 0.989 shows heavy overfitting.' },
+      { title: 'Tune', text: '`RandomizedSearchCV` (20 candidates × 3 folds) brings train R² to 0.956 with test R² 0.725.' },
+      { title: 'Freeze and test on the warehouse', text: 'Aggregate 111,247 pages in DuckDB with the same columns and compare to a naive persistence baseline.' },
+      { title: 'Try to close the gap', text: 'Tuned model and a `log1p` target on the warehouse data.' },
+      { title: 'Rebuild with warehouse features', text: 'Train on richer DuckDB signals (60-day momentum, position volatility, query mix) with strict historical windows.' },
+    ],
+    figures: [
+      { file: 'importance.png', caption: 'Previous-month impressions carry about half the model\'s importance.' },
+      { file: 'warehouse-log.png', caption: 'On warehouse data (log scale), predictions scatter widely, with bands of pages predicted near zero.' },
+      { file: 'warehouse-linear.png', caption: 'The same predictions on a linear scale: large pages are badly under-predicted.' },
+      { file: 'tuned-linear.png', caption: 'Tuning does not change the picture.' },
+      { file: 'intent-top10.png', caption: 'Main intent among the top 10% of pages by impressions: mostly informational.' },
+    ],
+    table: {
+      caption: 'Warehouse evaluation (111,247 pages)',
+      head: ['Model', 'MAE', 'RMSE', 'R²'],
+      rows: [
+        ['Naive "same as last month"', '1,114', '4,135', '0.627'],
+        ['CSV-trained XGBoost', '1,099', '5,235', '0.402'],
+        ['Tuned XGBoost', '1,045', '5,274', '0.393'],
+        ['Tuned XGBoost, log target', '1,028', '5,321', '0.382'],
+      ],
+    },
+    findings: [
+      'The CSV-trained model did not transfer: on the warehouse the naive baseline wins on R² and RMSE.',
+      'A model trained on warehouse features cut MAE from 1,074 to 689 against the naive baseline, but its R² was lower (0.58 vs 0.78), so it is worse on the largest pages.',
+    ],
+    trust:
+      'An honest negative result, and a useful one: always compare against a persistence baseline before trusting an R².',
+    related: ['full-release', 'needs-refresh'],
+  },
+  {
+    slug: 'shap',
+    title: 'Explainability with SHAP',
+    short: 'XGBoost decline model explained at the level of FlyRank\'s own fields.',
+    notebooks: ['notebooks/Content_Decline_Explainability_SHAP_Aggregated.ipynb', 'work/notebooks/FlyRank_Content_Decline_Explainability_SHAP_Aggregated.ipynb'],
+    data: CSV,
+    methods: ['XGBoost', 'permutation importance', 'SHAP', 'partial dependence'],
+    question: 'Why does a decline model flag a page, in terms of original fields rather than one-hot columns?',
+    summary:
+      'Trains an XGBoost decline classifier and explains it three ways (native importance, permutation importance, SHAP). Its contribution is aggregating SHAP values from 21 one-hot columns back to 14 original features, so `content_type` gets one contribution per page.',
+    stats: [
+      { value: '0.81 / 0.82', label: 'ROC-AUC / PR-AUC' },
+      { value: '21 → 14', label: 'SHAP columns aggregated' },
+      { value: '1.16', label: 'mean |SHAP| of previous impressions' },
+    ],
+    pipeline: [
+      { title: 'Define the target and features', text: '`is_declining_label` (54.2% positive); 14 features including previous-30-day traffic, age, staleness, position and keyword fields.' },
+      { title: 'Split and train', text: 'Stratified 80/20 split (24,000 / 6,000) and an XGBoost pipeline with median imputation and one-hot encoding.' },
+      { title: 'Evaluate', text: 'ROC-AUC 0.810, PR-AUC 0.820, accuracy 0.731.' },
+      { title: 'Three importance views', text: 'Native XGBoost importance, permutation importance on held-out data (drop in ROC-AUC), and SHAP on the transformed features.' },
+      { title: 'Aggregate SHAP to original features', text: 'Map every transformed column back to its source feature and sum contributions per page; global importance is the mean absolute aggregated value.' },
+      { title: 'Partial dependence', text: 'How predicted decline changes with each numeric feature.' },
+      { title: 'Explain individual pages', text: 'The highest-risk page, a false positive and a false negative, at the original-feature level, plus an operational risk report.' },
+    ],
+    figures: [
+      { file: 'aggregated.png', caption: 'Aggregated SHAP: previous-30-day impressions dominate (1.16), then previous clicks (0.31), content age (0.30) and position (0.25).' },
+      { file: 'beeswarm.png', caption: 'Low previous-30-day impressions push strongly away from decline.' },
+      { file: 'permutation.png', caption: 'Permutation importance agrees: shuffling previous impressions costs 0.24 ROC-AUC.' },
+      { file: 'pdp-prev30.png', caption: 'Decline probability jumps from about 0 to about 0.6 as previous impressions rise from zero: pages with no earlier traffic cannot decline.' },
+      { file: 'pdp-position.png', caption: 'Partial dependence on position: higher-ranked pages get higher predicted decline in this model.' },
+      { file: 'pdp-age.png', caption: 'Younger pages get higher predicted decline, matching the EDA.' },
+      { file: 'local-highest.png', caption: 'Highest-risk page (98.7%): a top-ranked page (position 1.3) with no clicks.' },
+      { file: 'local-false-positive.png', caption: 'A false positive (94.3%) driven by a high position and a recent update.' },
+      { file: 'local-false-negative.png', caption: 'A borderline false negative (50.0%): previous impressions push up, clicks and sessions push down.' },
+      { file: 'roc.png', caption: 'ROC curve.' },
+      { file: 'pr.png', caption: 'Precision–recall curve.' },
+    ],
+    findings: [
+      'Native importance, permutation importance and SHAP rank the features in the same order.',
+      'Keyword competition and CPC contribute almost nothing.',
+      'Article-level explanations show which fields push each page toward or away from decline, in FlyRank\'s own terms.',
+    ],
+    trust:
+      'The SHAP machinery is sound. What it reveals is that the model leans on a label-window feature: pages with no earlier traffic are labeled new or flat by definition. Explanations describe the model, not causes of decline.',
+    related: ['needs-refresh', 'capstone'],
+  },
+  {
+    slug: 'rec-v1',
+    group: ENGINE,
+    title: 'Recommendation Engine v1: transparent rules',
+    short: 'Priority score, tier, reasons and suggested action for 157,464 client-content pairs.',
+    notebooks: ['notebooks/FlyRank_Content_Refresh_Recommendation_Engine.ipynb'],
+    data: WAREHOUSE,
+    methods: ['DuckDB SQL', 'weighted rule score', 'reason codes'],
+    question: 'Without verified refresh outcomes, what is an honest first recommender?',
+    summary:
+      'The first version of the engine is deliberately not a trained model: with no recorded refresh outcomes there is nothing to supervise. It scores explicit, auditable signals and explains every recommendation.',
+    stats: [
+      { value: '157,464', label: 'client-content pairs' },
+      { value: '31,632', label: 'HIGH tier' },
+      { value: '0', label: 'rows with a usable content date' },
+    ],
+    pipeline: [
+      { title: 'Inspect metadata', text: 'Look for title, URL and update-date columns instead of assuming them. None usable were found, so content age is left out rather than guessed.' },
+      { title: 'Aggregate signals in DuckDB', text: 'Recent vs previous 30-day impressions and clicks, CTR, position, ranking volatility and 90-day query mix.' },
+      { title: 'Score four signals', text: 'Decline severity, search demand (log impressions and visible queries), page-one opportunity (position 4–20), and age when a reliable date exists.' },
+      { title: 'Assign tiers', text: 'HIGH, MEDIUM or LOW from the weighted score.' },
+      { title: 'Write reasons and actions', text: 'Each row gets plain-language reasons built from the signals that fired, plus a suggested next step.' },
+      { title: 'Export for review', text: 'Full queue, HIGH-priority list and a reason summary as CSV.' },
+    ],
+    figures: [
+      { file: 'tiers.png', caption: 'HIGH 31,632, MEDIUM 70,718, LOW 55,114: a fifth of pages in HIGH is too many to review.' },
+      { file: 'tier-scatter.png', caption: 'Priority tier against impression trend and position.' },
+    ],
+    findings: [
+      'The weights are written down as business hypotheses, not learned values, and the score is a ranking aid, not a probability.',
+      'Too many HIGH pages motivated a learned ranker and stricter evidence rules in later stages.',
+    ],
+    trust: 'A transparent heuristic. Its value is auditability, not measured accuracy.',
+    related: ['rec-stage1', 'rec-stage2'],
+  },
+  {
+    slug: 'rec-stage1',
+    group: ENGINE,
+    title: 'Stage 1: baseline validation',
+    short: 'The rules engine plus explicit checks on joins, keys, missing values and score consistency.',
+    notebooks: [`${REC}/FlyRank_Content_Refresh_Recommendation_Engine_Stage1_Validation.ipynb`],
+    data: WAREHOUSE,
+    methods: ['DuckDB SQL', 'join and key audits', 'assertion checks'],
+    question: 'Before trusting the rules engine, are its inputs and outputs mechanically sound?',
+    summary:
+      'Stage 1 keeps the v1 scoring and adds the checks that make it trustworthy: join and key uniqueness, a missing-value audit, score-range and tier assertions, and a review of top recommendations across several clients.',
+    stats: [
+      { value: '0', label: 'duplicate client-content rows' },
+      { value: '100%', label: 'metadata join match' },
+      { value: 'PASS', label: 'score range and tier checks' },
+    ],
+    pipeline: [
+      { title: 'Aggregate and join', text: 'Same DuckDB aggregation as v1 (157,464 rows) and the metadata join on `content_hash_id`.' },
+      { title: 'Validate keys', text: 'No duplicate client-content pairs, no duplicate content keys in the dimension, and a 100% metadata match.' },
+      { title: 'Audit missing values', text: 'Title, URL and content age are 100% missing; visible queries 21.5%; recent position and CTR 4.0%. No negative traffic values.' },
+      { title: 'Assert score consistency', text: 'All scores present and within 0.1–100; every tier threshold consistent; the age signal is 100% missing and therefore unused.' },
+      { title: 'Review across clients', text: 'Top five recommendations for the clients with the most eligible content, with written review questions.' },
+      { title: 'Export', text: 'Recommendations, HIGH-priority list and reason summary.' },
+    ],
+    figures: [
+      { file: 'tiers.png', caption: 'Tier counts are unchanged from v1: the checks validate the engine, they do not change it.' },
+      { file: 'tier-scatter.png', caption: 'Priority tier against impression trend and position.' },
+    ],
+    findings: [
+      'The checks are mechanical assertions about the implementation, not proof that the weights are right.',
+      'Validating from one client\'s queue is not enough, so the notebook reviews several clients side by side.',
+    ],
+    trust: 'Establishes that the pipeline is correct, not that its recommendations are good.',
+    related: ['rec-v1', 'rec-stage2'],
+  },
+  {
+    slug: 'rec-stage2',
+    group: ENGINE,
+    title: 'Stage 2: learning to rank (LambdaRank)',
+    short: 'Coverage-aware training data, a forward-looking design, and repeated client-held-out evaluation.',
+    notebooks: [`${REC}/FlyRank_Content_Refresh_Recommendation_Engine_Stage2.ipynb`],
+    data: WAREHOUSE,
+    methods: ['DuckDB SQL', 'LightGBM LambdaRank', 'NDCG@5/@10', 'GroupShuffleSplit'],
+    question: 'Can a learned ranker order pages by future decline severity better than transparent baselines, for unseen clients?',
+    summary:
+      'The core modeling stage (Stage 2.1). It audits Search Console coverage, builds training rows only where enough days were observed, uses features from days 60–120 before the data end to rank decline in the later window, and evaluates LambdaRank against two baselines on five repeated client splits.',
+    stats: [
+      { value: '0.381 vs 0.263', label: 'NDCG@10, LambdaRank vs impressions' },
+      { value: '78,900', label: 'eligible rows, 32 clients' },
+      { value: '9 of 10', label: 'split × k wins vs rule baseline' },
+    ],
+    pipeline: [
+      { title: 'Audit coverage', text: 'Cache a 120-day window (43.1M rows). 27.5M rows had no Search Console data; they stay missing, not zero. 6,390 exact duplicate key groups are found and deduplicated.' },
+      { title: 'Coverage policy', text: 'A page needs at least 15 observed days in each 30-day window and at least 100 previous impressions.' },
+      { title: 'Build training examples', text: '78,904 rows from 36 clients. Relevance grades 0–4 by decline severity, from "< 20% decline, stable or growth" (28,518 rows) to "80%+ decline" (2,605).' },
+      { title: 'Engineer stable features', text: '17 features from days 60–90 and 90–120: log impressions and clicks, CTR, an impression log-ratio, position, position change, volatility and active days. Query signals stay out until their date alignment is verified.' },
+      { title: 'Sample training groups only', text: 'If a client is very large, sample its training rows within each relevance grade. Test rows are never sampled.' },
+      { title: 'Repeated client-level evaluation', text: '5 seeds, each with 25 training and 7 test clients; the imputer is fitted on training rows only. LambdaRank, a rule score and an impressions-only score are ranked on the same held-out pages.' },
+      { title: 'Evidence-based eligibility', text: 'HIGH needs at least 21 active feature days, 100+ feature-window impressions and a negative trend in the feature windows.' },
+      { title: 'Inspect and export', text: 'Model/baseline disagreements, feature importance, the final model and all audit tables.' },
+    ],
+    figures: [
+      { file: 'ndcg.png', caption: 'LambdaRank is higher at both cutoffs, with wide spread across splits.' },
+      { file: 'importance.png', caption: 'Position volatility and the impression trend between the two feature windows lead the ranker.' },
+    ],
+    table: ndcgTable,
+    findings: [
+      'LambdaRank beat the rule baseline in 9 of 10 split × k comparisons; the one loss was −0.004.',
+      'On one held-out split (8,363 pages, 7 clients) the evidence rules gave 6 HIGH, 75 MEDIUM, 7,835 LOW and 447 not eligible.',
+      'An earlier single-split Stage 2 run reported NDCG@10 0.433; the repeated-split number (0.381) is the more honest estimate.',
+    ],
+    trust:
+      'This is the closest the project comes to early warning: features end before the outcome window, on the real warehouse, evaluated on unseen clients. NDCG still measures agreement with historical decline grades from one panel end date, not traffic gained by refreshing, and 7-client test sets make results vary widely.',
+    related: ['rec-stage3', 'rec-eda', 'rec-final-gated'],
+  },
+  {
+    slug: 'rec-stage3',
+    group: ENGINE,
+    title: 'Stage 3: business-impact tracking',
+    short: 'An intervention log, pre/post outcomes and a matched difference-in-differences design.',
+    notebooks: [`${REC}/FlyRank_Content_Refresh_Recommendation_Engine_Stage3_Business_Impact_Tracking.ipynb`],
+    data: WAREHOUSE,
+    methods: ['intervention log', 'pre/post windows', 'matched controls', 'difference-in-differences'],
+    question: 'Once editors act on recommendations, how would we measure what happened?',
+    summary:
+      'Keeps the Stage 2 pipeline and adds a measurement layer. Editors record decisions and real refresh dates; the notebook then compares 30 days before and after each refresh and builds a matched comparison against similar pages that were not refreshed.',
+    stats: [
+      { value: '8,363', label: 'intervention-log rows' },
+      { value: '0', label: 'refreshes recorded so far' },
+      { value: 'skipped', label: 'impact estimate (no data, none invented)' },
+    ],
+    pipeline: [
+      { title: 'Re-run Stage 2', text: 'Coverage audit, training examples, LambdaRank evaluation and the held-out queue.' },
+      { title: 'Export candidates', text: 'A stable recommendation-candidate file for editors.' },
+      { title: 'Intervention log', text: 'One row per recommendation with `not_reviewed`, `accepted`, `rejected`, `deferred`, `refreshed` or `no_change`, and the actual refresh date.' },
+      { title: 'Pre/post outcomes', text: 'For each recorded refresh, observed impressions, clicks and position for 30 days before and after, counting only days with Search Console data.' },
+      { title: 'Adoption summary', text: 'How many recommendations were reviewed, accepted or refreshed.' },
+      { title: 'Matched comparison', text: 'Up to three same-client control pages with similar pre-period impressions and position, then a descriptive difference-in-differences on log impressions.' },
+    ],
+    figures: [
+      { file: 'ndcg.png', caption: 'Ranking quality carried over from Stage 2.' },
+    ],
+    findings: [
+      'All 8,363 logged recommendations are `not_reviewed` and no refresh dates exist, so every outcome section skips cleanly and says so.',
+      'The design is ready for real data: once refreshes are logged, the same cells produce adoption, pre/post and DiD tables.',
+    ],
+    trust:
+      'Pre/post changes and matched DiD are observational: seasonality, algorithm updates and other edits can move traffic. The notebook recommends a randomized holdout for causal claims.',
+    related: ['rec-stage2', 'rec-stage4'],
+  },
+  {
+    slug: 'rec-stage4',
+    group: ENGINE,
+    title: 'Stage 4: production readiness and monitoring',
+    short: 'Versioned snapshots, drift references, a model bundle with a manifest, and release gates.',
+    notebooks: [`${REC}/FlyRank_Content_Refresh_Recommendation_Engine_Stage4_Production_Readiness_and_Monitoring.ipynb`],
+    data: WAREHOUSE,
+    methods: ['release contract', 'feature-drift reference', 'manifest hashes', 'release gates'],
+    question: 'What does a run need to produce before its queue can be handed to editors?',
+    summary:
+      'Turns the research workflow into a repeatable release. Each run writes a dated recommendation snapshot, data-quality and volume reports, a feature-drift reference, a model bundle and a manifest, and records whether basic gates passed.',
+    stats: [
+      { value: 'PASS', label: 'release readiness' },
+      { value: '78,900', label: 'eligible rows validated' },
+    ],
+    pipeline: [
+      { title: 'Run Stages 2 and 3', text: 'Ranking, evaluation, queue and tracking exactly as before.' },
+      { title: 'Release contract', text: 'Define the artifacts every run must write; dated files are the audit trail, `latest` files are convenience copies.' },
+      { title: 'Validate runtime objects', text: 'Fail early if the model, imputer, feature list, eligible data or queue is missing.' },
+      { title: 'Snapshot the queue', text: 'A dated recommendation snapshot with a stable schema and no target-only fields.' },
+      { title: 'Quality and drift', text: 'Feature missingness, duplicate keys and tier mix, plus feature quantiles saved as a drift reference.' },
+      { title: 'Bundle, manifest and gates', text: 'Package ranker, imputer and features with file hashes, then apply conservative release checks.' },
+      { title: 'Monitoring plan', text: 'Compare data quality, queue health, drift, held-out NDCG and logged outcomes run to run.' },
+    ],
+    figures: [
+      { file: 'summary.png', caption: 'Run summary: tier distribution, score by tier, and model rank against baseline rank.' },
+    ],
+    findings: [
+      'A passing checklist is a minimum technical gate, not evidence of impact.',
+      'The suggested next engineering step is a tested Python package and a scheduled batch job with alerts and an editor review interface.',
+    ],
+    trust: 'Release gates check structure and consistency; ranking quality still comes from the client-held-out evaluation.',
+    related: ['rec-stage3', 'rec-final-integrated'],
+  },
+  {
+    slug: 'rec-final-integrated',
+    group: ENGINE,
+    title: 'Final integrated workflow (draft)',
+    short: 'Stages 1–4 in one notebook, with the production queue scored by the final model.',
+    notebooks: [`${REC}/FlyRank_Content_Refresh_Recommendation_Engine_Final_Integrated_Draft.ipynb`],
+    data: WAREHOUSE,
+    methods: ['end-to-end pipeline', 'LambdaRank', 'release checks'],
+    question: 'Can the whole engine run top to bottom as one workflow?',
+    summary:
+      'Consolidates validation, ranking, tracking and release into one notebook. The main change: the production queue now comes from the final fitted ranker scoring every eligible row, not from the last held-out split.',
+    stats: [
+      { value: '78,900', label: 'queue rows, 32 clients' },
+      { value: '32', label: 'HIGH-tier pages' },
+      { value: '6/6', label: 'release checks passed' },
+    ],
+    pipeline: [
+      { title: 'Repository setup and authentication', text: 'Clone in Colab, connect DuckDB to the warehouse.' },
+      { title: 'Stages 1–2', text: 'Coverage audit, training examples, features, repeated client evaluation (same NDCG results as Stage 2).' },
+      { title: 'Production scoring', text: 'Fit the final model on all eligible rows and score every one of them.' },
+      { title: 'Stage 3 tracking', text: 'Intervention log for all 78,900 rows; outcome sections skip until refreshes are logged.' },
+      { title: 'Stage 4 release', text: 'Dated snapshot, quality and drift reports, bundle, manifest and release checks.' },
+    ],
+    figures: [
+      { file: 'summary.png', caption: 'Production queue: LOW 76,057, not eligible 2,426, MEDIUM 385, HIGH 32.' },
+    ],
+    findings: [
+      'Scoring the whole eligible population turns the evaluation queue into an operational one.',
+      'The production queue is still limited to rows that also had a target window, which the gated version fixes.',
+    ],
+    trust: 'Same evaluation evidence as Stage 2; this notebook changes how the queue is produced, not how good it is.',
+    related: ['rec-stage4', 'rec-final-gated'],
+  },
+  {
+    slug: 'rec-final-gated',
+    group: ENGINE,
+    title: 'Final workflow with validation gates',
+    short: 'The final engine with gates A, B and C and an end-to-end execution audit.',
+    notebooks: [`${REC}/FlyRank_Content_Refresh_Recommendation_Engine_Final_Validation_Gated.ipynb`],
+    data: WAREHOUSE,
+    methods: ['validation gates', 'LambdaRank', 'feature-only eligibility', 'execution audit'],
+    question: 'Can every stage prove its own invariants before the next one runs?',
+    summary:
+      'The final version of the engine. Three gates fail fast on broken aggregation, evaluation or scoring, production eligibility depends only on feature windows (so recent pages without a finished outcome window can still be scored), and a final audit records that the full warehouse run completed.',
+    stats: [
+      { value: '91,716', label: 'pages scored, 40 clients' },
+      { value: '35', label: 'HIGH-tier pages' },
+      { value: '14/14', label: 'release checks passed' },
+    ],
+    pipeline: [
+      { title: 'Audit and aggregate', text: 'The 120-day coverage audit and coverage-aware training examples (78,904 rows).' },
+      { title: 'Gate A: aggregation', text: 'Required columns present, unique client-content keys, observed-day counts within 0–30, non-negative aggregates, relevance grades 0–4. PASS.' },
+      { title: 'Features and repeated evaluation', text: 'Same 17 features and 5 client-held-out seeds as Stage 2.' },
+      { title: 'Gate B: evaluation', text: 'Every seed evaluated, all three methods compared, 198 finite NDCG values in [0, 1], unique metric grain. PASS.' },
+      { title: 'Production scoring', text: 'Final ranker scores every page eligible on feature windows alone.' },
+      { title: 'Gate C: production population', text: 'Non-empty queue, unique keys, finite scores, unique within-client ranks. PASS for 91,716 pages across 40 clients.' },
+      { title: 'Tracking and release', text: 'Intervention log for all 91,716 pages, snapshot, drift reference, bundle and manifest with matching hashes.' },
+      { title: 'Execution audit', text: 'A final cell confirms warehouse access, schema inspection, aggregation, evaluation, inference and release checks all ran in one fresh runtime.' },
+    ],
+    figures: [
+      { file: 'ndcg.png', caption: 'NDCG across repeated client holdouts (same evaluation as Stage 2).' },
+      { file: 'importance.png', caption: 'LambdaRank feature importance on the last repeated split.' },
+      { file: 'summary.png', caption: 'Production queue: LOW 91,221, MEDIUM 460, HIGH 35.' },
+    ],
+    table: ndcgTable,
+    findings: [
+      'Feature-only eligibility widens the scored population from 78,900 pages (32 clients) to 91,716 (40 clients).',
+      'Only 35 pages reach HIGH, a reviewable number, compared with 31,632 in the v1 rules engine.',
+      'All 14 release checks passed, including snapshot and bundle hashes matching the manifest.',
+    ],
+    trust:
+      'The gates prove the pipeline is internally consistent. Ranking quality is the Stage 2 evidence (NDCG against historical decline grades), and business impact still needs logged refreshes.',
+    related: ['rec-stage2', 'rec-eda'],
+  },
+]

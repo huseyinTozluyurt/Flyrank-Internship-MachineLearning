@@ -1,168 +1,21 @@
 <!doctype html>
 <html lang="en">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Which content pages should an editor review first?</title>
-<meta name="description" content="A client-held-out comparison of a rule baseline, logistic regression and random forest for ranking decline-labeled content pages for human editorial review, on 30,000 anonymized FlyRank pages.">
-<style>
-  :root {
-    --bg: #fcfcfb; --surface: #ffffff; --text: #0b0b0b; --muted: #52514e; --rule: #e4e3df;
-    --accent: #2a78d6; --accent-2: #eb6834; --callout: #f3f6fb;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #1a1a19; --surface: #222221; --text: #f0efec; --muted: #c3c2b7; --rule: #3a3a38;
-      --accent: #5b9dea; --accent-2: #e8784a; --callout: #232a33;
-    }
-    :root:not([data-theme="light"]) figure img { background: #fcfcfb; }
-  }
-  * { box-sizing: border-box; }
-  body { margin: 0; background: var(--bg); color: var(--text);
-         font: 17px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
-  main { max-width: 760px; margin: 0 auto; padding: 40px 16px 80px; }
-  h1 { font-size: 2rem; line-height: 1.2; margin: 0 0 8px; }
-  h2 { font-size: 1.35rem; margin: 48px 0 12px; padding-top: 16px; border-top: 1px solid var(--rule); }
-  h3 { font-size: 1.05rem; margin: 28px 0 8px; }
-  p, li { max-width: 68ch; }
-  .meta { color: var(--muted); font-size: 0.92rem; margin-bottom: 24px; }
-  .abstract { background: var(--callout); border-left: 4px solid var(--accent); padding: 16px 20px; border-radius: 6px; }
-  .abstract p { margin: 0; }
-  .callout { background: var(--callout); padding: 12px 16px; border-radius: 6px; }
-  figure { margin: 24px 0; }
-  figure img { width: 100%; height: auto; border-radius: 6px; border: 1px solid var(--rule); }
-  figcaption { color: var(--muted); font-size: 0.92rem; margin-top: 6px; }
-  .table-wrap { overflow-x: auto; margin: 16px 0; }
-  table { border-collapse: collapse; width: 100%; font-size: 0.93rem; font-variant-numeric: tabular-nums; }
-  th, td { padding: 6px 10px; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
-  th:first-child, td:first-child { text-align: left; }
-  thead th { color: var(--muted); font-weight: 600; }
-  tr.best td { font-weight: 600; }
-  a { color: var(--accent); }
-  code { font-size: 0.88em; background: var(--callout); padding: 1px 4px; border-radius: 4px; }
-  nav.toc { font-size: 0.92rem; color: var(--muted); display: flex; flex-wrap: wrap; gap: 4px 0; }
-  p a, li a { overflow-wrap: anywhere; }
-  nav.toc a { margin-right: 12px; white-space: nowrap; }
-</style>
-</head>
-<body>
-<main>
-
-<h1>Which content pages should an editor review first?</h1>
-<p class="meta">A client-held-out comparison of a rule baseline and two lightweight models on 30,000 anonymized pages · Hüseyin Tozluyurt · FlyRank ML Internship capstone · October 2026</p>
-
-<nav class="toc">
-  <a href="#abstract">Abstract</a><a href="#problem">Problem</a><a href="#data">Data</a><a href="#method">Method</a><a href="#results">Results</a><a href="#limits">Limitations</a><a href="#recs">Recommendations</a><a href="#repro">Reproducibility</a><a href="#credit">Credit</a><a href="projects.html">Full project portfolio</a>
-</nav>
-
-<h2 id="abstract">Abstract</h2>
-<div class="abstract"><p>
-Can a few observable page signals rank pages so that an editor's 50-page review list holds more pages carrying a supplied decline label than the existing "stale and high-traffic" rule, for clients the model has never seen?
-Using FlyRank's anonymized starter dataset (30,000 pages, 32 clients), I compared that rule with logistic regression and random forest on six features, over 20 repeated client-held-out splits, with leakage checks and two sensitivity analyses.
-Both models beat the rule: Precision@50 was 0.77 and 0.75 against 0.66 (held-out base rate 0.58), and average precision 0.66 and 0.68 against 0.58.
-But only the random forest kept its top-50 precision (0.77, base rate 0.55) once 1,205 pages whose missing position data almost always means a <code>new</code> label were removed.
-The output is a review queue with plain reason codes for human editors: exploratory ranking of a supplied current label, not an early-warning system and not evidence that editing improves performance.
-</p></div>
-
-<h2 id="problem">1. The problem</h2>
-<p>An editor can review roughly 50 pages per cycle. Which 50? Today's rule says: pages not updated for more than 180 days, with the most impressions first. It is simple and transparent, but it uses two fields and ignores position and click-through rate.</p>
-<p>This study asks whether combining a few more signals ranks pages carrying FlyRank's supplied decline label (<code>trend_direction = down</code>: last-30-day impressions more than 20% below the previous 30 days) higher than the rule does. The test uses clients the model has never seen, because that is how a queue would be used for a new site. The unit is one page within one client. The output is a rank, and the editor decides what, if anything, to do.</p>
-
-<h2 id="data">2. Data</h2>
-<p>The anonymized FlyRank content-refresh starter slice: 30,000 pages, 44 columns, 32 pseudonymized clients, trailing-90-day metrics. It contains no client names, URLs, titles or queries. 54.2% of pages carry the decline label, so <strong>every precision number on this page must be read against a base rate of about 55–58%</strong>.</p>
-<figure>
-  <img src="img/fig1_data_overview.png" alt="Left: bar chart of label counts: down 16,262, stable 5,962, up 4,388, new 2,236, flat 1,152. Right: pages per client, from 7,008 down to 3, highly skewed.">
-  <figcaption>Half the pages carry the decline label, and client sizes are very uneven (largest client 23% of pages). That is why every evaluation holds out whole clients.</figcaption>
-</figure>
-<p><strong>Excluded on purpose:</strong> <code>trend_direction</code> and <code>trend_pct</code> (the label is computed from them), every last-30/previous-30-day window column (the label arithmetic itself), and the pseudonymous IDs (used only for grouping). Word-count and keyword fields were left out for heavy, type-dependent missingness.</p>
-
-<h2 id="method">3. Methodology</h2>
-<ul>
-  <li><strong>Features (6):</strong> days since last update, content age, 90-day impressions, average position (0 recoded to missing), CTR, and staleness × position.</li>
-  <li><strong>Baseline:</strong> the existing stale + traffic rule, scored on the same held-out rows.</li>
-  <li><strong>Models:</strong> class-balanced logistic regression and a shallow random forest (200 trees, depth 5). Median imputation plus missing-value indicators, fitted inside each training split.</li>
-  <li><strong>Validation:</strong> 20 repeated 75/25 splits that hold out whole clients (about 8 per split). A random page split is run only as a diagnostic.</li>
-  <li><strong>Leakage checks:</strong> an assertion blocks label-derived fields and IDs. Alone, each allowed feature ranks the label with AUC 0.51–0.59; the forbidden <code>trend_pct</code> scores 1.0.</li>
-  <li><strong>Two risks found and tested:</strong> (1) impressions, CTR and position are measured over a 90-day window that <em>contains</em> the 30-day label window; an age-only model shows what survives without them. (2) The 1,205 pages with no position data are 96% labeled <code>new</code>, so "position missing" is a near-mechanical marker of a non-decline label; a second run drops those pages.</li>
-</ul>
-
-<h2 id="results">4. Results</h2>
-<h3>Both models beat the rule on unseen clients</h3>
-<div class="table-wrap"><table>
-  <thead><tr><th>Mean of 20 client-held-out splits</th><th>Avg. precision</th><th>ROC AUC</th><th>P@50</th><th>Lift@50</th></tr></thead>
-  <tbody>
-    <tr><td>Stale + traffic rule</td><td>0.58</td><td>0.50</td><td>0.66</td><td>1.13</td></tr>
-    <tr><td>Logistic regression</td><td>0.66</td><td>0.61</td><td>0.77</td><td>1.33</td></tr>
-    <tr class="best"><td>Random forest</td><td>0.68</td><td>0.64</td><td>0.75</td><td>1.31</td></tr>
-    <tr><td>Age-only logistic (sensitivity)</td><td>0.65</td><td>0.59</td><td>0.70</td><td>1.20</td></tr>
-  </tbody>
-</table></div>
-<p class="meta">Held-out base rate 0.58. P@50 = share of the top 50 pages that carry the decline label. Lift@50 = P@50 ÷ base rate.</p>
-<figure>
-  <img src="img/fig2_model_vs_baseline.png" alt="Dot plots of Precision@50 and average precision per split for the rule, logistic regression and random forest; the rule's average precision sits on the base-rate line, the models above it.">
-  <figcaption>The rule's average precision equals the base rate; both models beat it on average precision in all 20 splits. Logistic regression beat the rule's Precision@50 in 19 of 20 splits.</figcaption>
-</figure>
-
-<h3>Only the forest's top 50 survives the position-missing check</h3>
-<p>On all pages, the two models are about tied at the top 50 (the forest was higher in 9 of 20 splits). Remove the 1,205 position-missing pages, which are easy negatives, and the picture changes:</p>
-<div class="table-wrap"><table>
-  <thead><tr><th>28,795 pages with position data</th><th>Avg. precision</th><th>P@50</th><th>Lift@50</th></tr></thead>
-  <tbody>
-    <tr><td>Stale + traffic rule</td><td>0.55</td><td>0.57</td><td>1.03</td></tr>
-    <tr><td>Logistic regression</td><td>0.62</td><td>0.61</td><td>1.10</td></tr>
-    <tr class="best"><td>Random forest</td><td>0.67</td><td>0.77</td><td>1.41</td></tr>
-  </tbody>
-</table></div>
-<p>The forest's Precision@50 was higher than logistic regression's in 18 of 20 splits. Logistic regression's strongest signal was the missing-position flag, which mostly says "this page is new". It helps pooled metrics but does little to order the remaining pages. <strong>The capstone therefore makes random forest the default queue</strong>, reversing the earlier milestone choice.</p>
-
-<h3>Random page splits flatter the models</h3>
-<p>When pages are split at random, 31 of 32 clients appear in both training and test data. The forest then scores 0.85 Precision@50 and 0.73 average precision, against 0.72 and 0.66 on the same seeds when clients are held out. A random split answers "does it work on more pages from sites it already knows?", which is not the question.</p>
-
-<h3>Results vary a lot by client</h3>
-<figure>
-  <img src="img/fig3_client_variation.png" alt="Two bar charts of within-client ROC AUC for 29 held-out clients. Logistic regression: 4 clients below 0.5. Random forest: 1 client below 0.5, values up to about 0.8.">
-  <figcaption>Within a single unseen client, the forest ranks better than chance for 28 of 29 clients (median AUC 0.61); logistic regression for 25 of 29 (median 0.55). Across splits, the forest's Precision@50 ranges from 0.52 to 0.98.</figcaption>
-</figure>
-
-<h3>What the models lean on</h3>
-<figure>
-  <img src="img/fig4_feature_signals.png" alt="Left: logistic coefficients; the missing-position indicators and content age are most negative, days since last update is positive. Right: forest importance led by 90-day impressions and content age.">
-  <figcaption>Page age carries much of the signal: older pages are less likely to carry the label, and long-unupdated pages slightly more likely. An age-only model keeps most of the full model's average precision (0.65 vs 0.66). The forest also leans on traffic volume, which overlaps the label window.</figcaption>
-</figure>
-
-<h2 id="limits">5. Limitations and honest framing</h2>
-<ul>
-  <li><strong>Current label only.</strong> The label marks pages already down. Nothing here shows the system can warn before a decline.</li>
-  <li><strong>Feature windows overlap the label window.</strong> Impressions, CTR and position include the label's 30 days, so part of their signal may reflect the decline itself. Feature dates cannot be verified in this snapshot; that needs the dated warehouse release, which this study did not run.</li>
-  <li><strong>Only 32 clients, very uneven.</strong> Results swing with which clients are held out. The 20 splits overlap, so spreads are descriptive, not significance tests.</li>
-  <li><strong>Scores are ranks, not probabilities.</strong> Class weighting shifts them (Brier 0.23, against 0.25 for a constant guess).</li>
-  <li><strong>Reason codes are threshold rules</strong> on observed fields, not causes and not explanations of an individual score.</li>
-  <li><strong>No outcomes measured.</strong> Nothing here shows that reviewing or editing a queued page changes its performance.</li>
-</ul>
-
-<h2 id="recs">6. Ranked recommendations</h2>
-<ol>
-  <li><strong>Use the random-forest queue as the default review list</strong>, with the logistic queue as a comparison. Each page is scored only by models that never saw its client. Expect about three in four of the top 50 to carry the decline label, against a base rate of about 55–58%.</li>
-  <li><strong>Work the top 20, then the next 30, using reason codes as a checklist.</strong> <em>High visibility</em> (33 of the top 50): confirm the traffic drop is real. <em>Position band 6–22</em> (7): check the results page and competing pages. <em>Model priority, context first</em> (11): no simple flag fired, so start from context.</li>
-  <li><strong>Check context before acting:</strong> seasonality, indexing and technical health, search intent, accuracy, and whether the page should stay live.</li>
-  <li><strong>Spread review across clients.</strong> The forest's top 50 came from 6 clients, 40% from one. Cap pages per client or run the queue per client.</li>
-  <li><strong>Never bulk-edit, delete or redirect from the queue.</strong> Log what was reviewed and done, so outcomes can be measured later.</li>
-</ol>
-<figure>
-  <img src="img/fig5_reason_codes.png" alt="Bar chart of reason codes in the random-forest top 50: high visibility 33, model priority context first 11, position danger band 7.">
-  <figcaption>Reason codes in the default top 50 are prompts for the editor, not causes of decline.</figcaption>
-</figure>
-<p class="callout"><strong>Next steps:</strong> validate on the dated DuckDB warehouse with per-client windows; if the history allows, run a true early-warning study (features from an earlier window, outcome from a later one, time-ordered validation); log editor actions so impact can eventually be measured.</p>
-
-<h2 id="repro">7. Reproducibility</h2>
-<p>Everything on this page comes from one notebook run, <a href="https://github.com/huseyinTozluyurt/Flyrank-Internship-MachineLearning/blob/main/work/notebooks/capstone.ipynb">work/notebooks/capstone.ipynb</a>. It writes the metrics receipt <a href="https://github.com/huseyinTozluyurt/Flyrank-Internship-MachineLearning/blob/main/work/outputs/capstone_metrics.json">work/outputs/capstone_metrics.json</a>. The full write-up is <a href="https://github.com/huseyinTozluyurt/Flyrank-Internship-MachineLearning/blob/main/work/capstone_report.md">work/capstone_report.md</a>.</p>
-<p>Rerun from a fresh clone with <code>pip install -r requirements.txt jupyter</code>, then <code>jupyter nbconvert --to notebook --execute work/notebooks/capstone.ipynb</code>, or use the notebook's Colab badge. Seeds: grouped splits 42–61 (42–46 reproduce Milestone 4); review queue built with 5 grouped splits at seed 42. Recorded with scikit-learn 1.9.1, pandas 3.0.5 and numpy 2.5.3.</p>
-
-<p>The capstone is one part of the internship. The EDA, missing-data study, heuristic baseline, classifiers, regression, SHAP, segmentation, PCA, anomaly detection and the Content Refresh Recommendation Engine are written up with their figures on the <a href="projects.html">full project portfolio</a> page.</p>
-
-<h2 id="credit">8. Acknowledgments &amp; data credit</h2>
-<p>Built on the FlyRank ML Internship dataset, the anonymized content-refresh starter slice provided by <a href="https://flyrank.ai">FlyRank</a>. Thanks to the FlyRank mentors for the data, the problem framing and the internship materials this work builds on.</p>
-
-</main>
-</body>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>FlyRank ML Internship</title>
+    <meta name="description" content="Hüseyin Tozluyurt's FlyRank ML internship: every data-analysis and machine-learning notebook explained step by step, with its charts, findings and the capstone paper. Data credit: FlyRank (https://flyrank.ai)." />
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%232a78d6'/%3E%3Cpath d='M8 22l5-7 4 4 7-10' stroke='white' stroke-width='3' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E" />
+    <script type="module" crossorigin src="./assets/index-CG0Yd-xR.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-yYbQ2JuB.css">
+  </head>
+  <body>
+    <div id="root"></div>
+    <noscript>
+      <p>This site needs JavaScript. The notebooks are in the
+        <a href="https://github.com/huseyinTozluyurt/Flyrank-Internship-MachineLearning">project repository</a>.</p>
+      <p>Acknowledgments &amp; data credit: built on the FlyRank ML Internship dataset provided by
+        <a href="https://flyrank.ai">FlyRank</a>.</p>
+    </noscript>
+  </body>
 </html>
